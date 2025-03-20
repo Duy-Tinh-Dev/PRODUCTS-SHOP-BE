@@ -7,6 +7,15 @@ const router = express.Router();
  * @swagger
  * components:
  *   schemas:
+ *     ProductFeature:
+ *       type: string
+ *       example: "Japanese quartz movement"
+ *
+ *     ProductImage:
+ *       type: string
+ *       format: uri
+ *       example: "https://images.unsplash.com/photo-1523275335684-37898b6baf30"
+ *
  *     Product:
  *       type: object
  *       required:
@@ -22,10 +31,61 @@ const router = express.Router();
  *         price:
  *           type: number
  *           description: Price of the product
+ *         description:
+ *           type: string
+ *           description: Full description of the product
+ *         shortDescription:
+ *           type: string
+ *           description: Brief summary of the product
+ *         category:
+ *           type: string
+ *           description: Product category
+ *         images:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/ProductImage'
+ *           description: List of product image URLs
+ *         features:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/ProductFeature'
+ *           description: Product features and specifications
+ *         inStock:
+ *           type: boolean
+ *           description: Product availability status
  *       example:
  *         id: 1
- *         name: "Laptop"
- *         price: 1000
+ *         name: "Minimalist Watch"
+ *         price: 249.99
+ *         description: "Crafted with precision and designed with simplicity in mind..."
+ *         shortDescription: "Elegant timepiece with premium materials and minimalist design."
+ *         category: "Accessories"
+ *         images: ["https://images.unsplash.com/photo-1523275335684-37898b6baf30", "https://images.unsplash.com/photo-1508057198894-247b23fe5ade"]
+ *         features: ["Japanese quartz movement", "Italian leather strap", "Sapphire crystal glass", "Water-resistant (30m)"]
+ *         inStock: true
+ *
+ *     PaginatedProducts:
+ *       type: object
+ *       properties:
+ *         products:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/Product'
+ *         pagination:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *               description: Total number of products
+ *             totalPages:
+ *               type: integer
+ *               description: Total number of pages
+ *             currentPage:
+ *               type: integer
+ *               description: Current page number
+ *             limit:
+ *               type: integer
+ *               description: Number of items per page
  */
 
 /**
@@ -37,30 +97,47 @@ const router = express.Router();
 
 /**
  * @swagger
- * /products:
+ * /api/products:
  *   get:
- *     summary: Get all products
+ *     summary: Get paginated products
  *     tags: [Products]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of products per page
  *     responses:
  *       200:
- *         description: List of all products
+ *         description: Paginated list of products
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Product'
+ *               $ref: '#/components/schemas/PaginatedProducts'
  */
 router.get("/", (req, res) => {
-  Product.getAll((err, results) => {
-    if (err) res.status(500).json({ error: err.message });
-    else res.json(results);
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+
+  Product.getAll(page, limit, (err, result) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json(result);
+    }
   });
 });
 
 /**
  * @swagger
- * /products/{id}:
+ * /api/products/{id}:
  *   get:
  *     summary: Get a product by ID
  *     tags: [Products]
@@ -82,15 +159,20 @@ router.get("/", (req, res) => {
  *         description: Product not found
  */
 router.get("/:id", (req, res) => {
-  Product.getById(req.params.id, (err, results) => {
-    if (err) res.status(500).json({ error: err.message });
-    else res.json(results[0]);
+  Product.getById(req.params.id, (err, result) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else if (!result) {
+      res.status(404).json({ error: "Product not found" });
+    } else {
+      res.json(result);
+    }
   });
 });
 
 /**
  * @swagger
- * /products:
+ * /api/products:
  *   post:
  *     summary: Create a new product
  *     tags: [Products]
@@ -109,15 +191,18 @@ router.get("/:id", (req, res) => {
  *               $ref: '#/components/schemas/Product'
  */
 router.post("/", (req, res) => {
-  Product.create(req.body, (err, results) => {
-    if (err) res.status(500).json({ error: err.message });
-    else res.json({ id: results.insertId, ...req.body });
+  Product.create(req.body, (err, result) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.status(201).json(result);
+    }
   });
 });
 
 /**
  * @swagger
- * /products/{id}:
+ * /api/products/{id}:
  *   put:
  *     summary: Update a product
  *     tags: [Products]
@@ -140,14 +225,26 @@ router.post("/", (req, res) => {
  */
 router.put("/:id", (req, res) => {
   Product.update(req.params.id, req.body, (err) => {
-    if (err) res.status(500).json({ error: err.message });
-    else res.json({ message: "Product updated" });
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      // Fetch the updated product to return in the response
+      Product.getById(req.params.id, (getErr, product) => {
+        if (getErr) {
+          res.status(500).json({ error: getErr.message });
+        } else if (!product) {
+          res.status(404).json({ error: "Product not found" });
+        } else {
+          res.json(product);
+        }
+      });
+    }
   });
 });
 
 /**
  * @swagger
- * /products/{id}:
+ * /api/products/{id}:
  *   delete:
  *     summary: Delete a product
  *     tags: [Products]
@@ -164,8 +261,11 @@ router.put("/:id", (req, res) => {
  */
 router.delete("/:id", (req, res) => {
   Product.delete(req.params.id, (err) => {
-    if (err) res.status(500).json({ error: err.message });
-    else res.json({ message: "Product deleted" });
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json({ message: "Product deleted successfully" });
+    }
   });
 });
 

@@ -3,7 +3,13 @@ const db = require("../config/db");
 const Category = {
   // Get all categories
   getAll: (callback) => {
-    db.query("SELECT * FROM categories ORDER BY name", callback);
+    const query = `
+      SELECT c.*, COUNT(p.id) as productCount
+      FROM categories c
+      LEFT JOIN products p ON c.id = p.category_id
+      GROUP BY c.id
+    `;
+    db.query(query, callback);
   },
 
   // Get category by ID
